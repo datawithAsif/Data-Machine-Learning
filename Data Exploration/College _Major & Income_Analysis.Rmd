@@ -1,0 +1,288 @@
+---
+title: "College Major And Income Data Analysis"
+author: "Abdullah Al Asif"
+date: "2025-04-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r, message=FALSE}
+library(tidyverse)
+library(scales)
+```
+
+
+```{r}
+recent_grads <- read.csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/refs/heads/main/data/2018/2018-10-16/recent-grads.csv")
+
+
+majors_processed <- recent_grads %>% 
+   arrange(desc(Median)) %>% 
+   mutate(Major = str_to_title(Major),
+          Major = fct_reorder(Major, Median)) 
+```
+###Early data Cleaning steps.
+###Aggregate by category
+
+```{r  by_major_category}
+
+by_major_category <- majors_processed %>%
+   filter(!is.na(Total)) %>% 
+  group_by(Major_category) %>%
+  summarize(Men = sum(Men),
+            Women = sum(Women),
+            Total = sum(Total),
+            MedianSalary = sum(Median * Sample_size)/ sum(Sample_size)) %>%
+  mutate(ShareWomen = Women / Total) %>%
+  arrange(desc(ShareWomen))
+```
+
+```{r}
+glimpse(recent_grads)
+
+```
+
+### Most common majors
+what major categories (e.g. Engineering, psychology, business) were most common
+```{r}
+
+by_major_category %>% 
+   mutate(Major_category = fct_reorder(Major_category, Total)) %>% 
+   gather(Gender, Number , Men, Women ) %>% 
+   ggplot(aes(Major_category, Number, fill = Gender))+
+   geom_col()+
+   scale_y_continuous(labels = comma_format())+
+   coord_flip()+
+   labs(x = "",
+        y = "Total # of graduates",
+        title =" What are the most common major categories?")
+
+
+```
+
+###what were The most common *majors*? (since there were 173, we are not going to show them all).
+
+
+```{r}
+majors_processed %>% 
+   mutate(Major = fct_reorder(Major, Total)) %>% 
+   arrange(desc(Total)) %>% 
+   head(20) %>% 
+   ggplot(aes(Major, Total, fill = Major_category))+
+   geom_col()+
+   coord_flip()+
+   scale_y_continuous(labels = comma_format())
+   labs(x = "",
+        y = "Total # of graduates")
+
+
+```
+
+
+
+### what categories of majors make more money than others?
+
+
+
+
+```{r}
+majors_processed %>% 
+   mutate(Major_category = fct_reorder(Major_category, Median)) %>% 
+   ggplot(aes(Major_category, Median, fill = Major_category))+
+   geom_boxplot()+
+   scale_y_continuous(labels = dollar_format())+
+   expand_limits(y = 0)+
+   coord_flip()+
+   theme(legend.position = "none")
+```
+```{r}
+majors_processed %>% 
+   group_by(Major_category) %>% 
+  summarize(Median = median(Median))%>% 
+   mutate(Major_category = fct_reorder(Major_category, Median)) %>% 
+   ggplot(aes(Major_category, Median))+
+   geom_col()+
+   scale_y_continuous(labels = dollar_format())+
+   coord_flip()
+
+```
+### What are the highest earning majors?
+
+```{r}
+
+
+majors_processed %>% 
+   filter(Sample_size >= 100) %>% 
+   head(20)%>% 
+   ggplot(aes(Major, Median, color = Major_category))+
+   geom_point()+
+   geom_errorbar(aes(ymin = P25th, ymax = P75th))+
+   expand_limits(y = 0)+
+   coord_flip()+
+   scale_y_continuous(labels = dollar_format())+
+   labs(title = "What are the highest earning majors?",
+          subtitles = "Top 20 Majors with at least 100 Graduates Surveyed. 
+        Bars represent 25th to 75th percentitle",x = "" , y = "Median salary of graduates")
+
+```
+###what are the lowest Earning Majors?
+
+```{r}
+majors_processed %>% 
+   filter(Sample_size >= 100) %>% 
+   tail(20) %>% 
+   ggplot(aes(Major, Median, color = Major_category))+
+   geom_point()+
+   geom_errorbar(aes(ymin = P25th, ymax = P75th))+
+   expand_limits(y = 0)+
+   coord_flip()
+
+```
+
+```{r}
+
+majors_processed %>% 
+   ggplot(aes(Sample_size, Median))+
+   geom_point()+
+   geom_text(aes(label = Major), check_overlap = TRUE, vjust = 0, hjust = 0)+
+   scale_x_log10()
+   
+```
+
+
+#How does gender breakdown relate to typical earnings?#
+
+```{r}
+majors_processed %>%
+   arrange(desc(Total)) %>% 
+   head(20) %>% 
+   mutate(Major = fct_reorder(Major, Total)) %>% 
+   gather(Gender, Number , Men, Women) %>% 
+   select(Major, Gender, Number) %>% 
+   ggplot(aes(Major,Number,fill = Gender))+
+   geom_col()+
+   coord_flip()
+   
+```
+
+
+
+```{r}
+
+library(ggrepel)
+by_major_category %>% 
+   ggplot(aes(ShareWomen, MedianSalary))+
+   geom_point()+
+   geom_smooth(method = lm)+
+   geom_text_repel(aes(label = Major_category), force = .2)+
+   expand_limits(y = 0)
+   
+```
+###interactive Graph
+
+```{r}
+
+library(plotly)
+
+
+g <- majors_processed %>% 
+   mutate(Major_category = fct_lump(Major_category, 4)) %>% 
+   ggplot(aes(ShareWomen, Median , color = Major_category, size = Sample_size, label = Major))+
+   geom_point()+
+   geom_smooth(aes(group = 1),method = lm)+
+   scale_x_continuous(labels = percent_format())+
+   scale_y_continuous(labels = dollar_format())+
+   expand_limits(y = 0)
+   
+
+ggplotly(g)
+```
+
+
+```{r}
+majors_processed %>% 
+   select(Major, Total, ShareWomen, Sample_size, Median) %>% 
+   lm(Median ~ ShareWomen, data = ., weights = Sample_size) %>% 
+   summary()
+```
+
+```{r}
+majors_processed %>% 
+   filter(Sample_size >=100) %>% 
+   mutate(IQR = P75th-P25th) %>% 
+   arrange(desc(IQR))
+
+```
+```{r}
+
+knitr::knit_exit()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
